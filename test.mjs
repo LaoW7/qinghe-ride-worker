@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import worker from './worker.mjs';
 
+
 const env = { ACCESS_KEY: 'test-key-' + 'A'.repeat(40), SMK_TOKEN: 'test-only-smk-token', COUPON_ID: '9000000000000000001', USER_COUPON_ID: '9000000000000000002' };
 const req = (key = env.ACCESS_KEY, extra = {}) => new Request('https://qinghe.example/api/ride', {
   method: 'POST', headers: { Authorization: 'Bearer ' + key, ...extra },
