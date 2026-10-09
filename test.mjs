@@ -64,11 +64,11 @@ test('two conversions use correct payloads and safely encode the ride-page token
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test('direct talent-token mode takes priority and never calls conversion endpoints', async () => {
+test('direct talent-token mode works without a SMK login credential', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = () => { throw new Error('direct mode must not call upstream'); };
   try {
-    for (const smk of [undefined, env.SMK_TOKEN]) {
+    for (const smk of [undefined, '', '   ']) {
       const directEnv = { ...env, SMK_TOKEN: smk, HZRCK_TOKEN: ' direct+/&token ' };
       assert.equal((await worker.fetch(req('incorrect'), directEnv)).status, 401);
       const response = await worker.fetch(req(), directEnv);
@@ -83,6 +83,44 @@ test('direct talent-token mode takes priority and never calls conversion endpoin
       const html = await (await worker.fetch(new Request('https://qinghe.example/'), directEnv)).text();
       assert.ok(!html.includes('direct+/&token'));
     }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('SMK conversion takes priority over an expired fixed talent token and exchanges on each invocation', async () => {
+  const originalFetch = globalThis.fetch;
+  let count = 0;
+  globalThis.fetch = async (url) => {
+    count++;
+    return url.endsWith('/changeToken')
+      ? Response.json({ data: 'channel-test-token' })
+      : Response.json({ code: 'PY0000', response: { hzrckToken: 'new-talent-token-' + count } });
+  };
+  try {
+    const both = { ...env, HZRCK_TOKEN: 'expired-talent-token' };
+    for (const expected of ['new-talent-token-2', 'new-talent-token-4']) {
+      const response = await worker.fetch(req(), both);
+      assert.equal(response.status, 200);
+      const result = await response.json();
+      const params = new URLSearchParams(new URL(result.url).hash.split('?')[1]);
+      assert.equal(params.get('accessToken'), expected);
+    }
+    assert.equal(count, 4);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('failed SMK conversion reports recovery guidance without falling back to the fixed talent token', async () => {
+  const originalFetch = globalThis.fetch;
+  let count = 0;
+  globalThis.fetch = async () => { count++; return Response.json({ data: null }); };
+  try {
+    const response = await worker.fetch(req(), { ...env, HZRCK_TOKEN: 'expired-talent-token' });
+    assert.equal(response.status, 502);
+    const result = await response.json();
+    assert.ok(result.error.includes('更新 SMK_TOKEN'));
+    assert.equal(result.url, undefined);
+    assert.ok(!JSON.stringify(result).includes('expired-talent-token'));
+    assert.ok(!JSON.stringify(result).includes(env.SMK_TOKEN));
+    assert.equal(count, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
 

@@ -69,9 +69,11 @@ async function postUpstream(url, body, headers, stage) {
 }
 
 async function ride(env) {
-  // The accessToken in getOffLineCode is a talent-system credential.
-  // Direct mode avoids the SMK login-token conversion endpoints entirely.
-  if (typeof env.HZRCK_TOKEN === 'string' && env.HZRCK_TOKEN.trim()) {
+  // Prefer exchanging a valid SMK login credential on every invocation.
+  // A fixed talent token may expire between visits. Do not fall back to it
+  // after conversion fails, because that would hide the recovery error.
+  const hasSmkToken = typeof env.SMK_TOKEN === 'string' && env.SMK_TOKEN.trim();
+  if (!hasSmkToken) {
     return rideLink(env.HZRCK_TOKEN.trim(), env);
   }
   const changed = await postUpstream(
@@ -86,7 +88,7 @@ async function ride(env) {
   );
   const channelToken = changed?.data;
   if (typeof channelToken !== 'string' || !channelToken.trim()) {
-    throw new PublicError('未取得渠道 Token，请确认 SMK_TOKEN 是有效的市民卡 accessToken。');
+    throw new PublicError('未取得渠道 Token。请在市民卡 App 中确认登录正常，重新提取市民卡登录 accessToken 并更新 SMK_TOKEN；不要使用 getOffLineCode 的人才 Token。');
   }
   const result = await postUpstream(
     'https://talent.hzrcm.cn/smk_hztalent/front/app/home/getHzrckToken',

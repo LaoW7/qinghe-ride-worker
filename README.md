@@ -11,7 +11,7 @@ Worker 使用个人访问码保护入口，将人才系统 Token 和券参数组
 - 个人访问码保护入口；Safari 可以记住访问码并自动跳转。
 - 保留官方页面的二维码编码与刷新逻辑。
 - 提供 iPhone 快捷指令配置和完整抓包、排障教程。
-- 可选市民卡登录 Token 转换模式。
+- 配置有效市民卡登录 Token 后，每次打开重新换取人才系统 Token。
 
 ## 快速部署
 
@@ -45,6 +45,23 @@ npx wrangler secret put USER_COUPON_ID
 
 如果已有 Worker，可在控制台用 `worker.mjs` 的全部内容替换入口代码，再配置上述变量。
 
+## 人才 Token 失效后的恢复
+
+v1.3.0 调整了优先级：配置有效的 `SMK_TOKEN` 时，每次调用都重新进行渠道和人才 Token 转换。仅配置 `HZRCK_TOKEN` 时继续使用直接跳转模式。
+
+临时恢复：在市民卡 App 中打开正常的乘车码，抓取新一次 `getOffLineCode` 请求中的 `accessToken`，更新 `HZRCK_TOKEN` 并部署。没有固定的已知有效期，也不能通过修改字符串延长登录态。
+
+尝试减少重复抓包：
+
+1. 将 `worker.mjs` 更新为本版本并部署。
+2. 抓取市民卡账号的登录态。原项目使用 `open.iconntech.com/unifyUser/queryUserByToken` 请求中的 `accessToken`，或 `open.iconntech.com/unifyUser/loginFaceCheck` 响应中的 `accessToken`。已有登录态时，重新打开 App 或进入账号页可能触发查询；这些位置需以你的实际请求为准。
+3. 将这个市民卡登录 Token 保存为 Worker Secret `SMK_TOKEN`。这里填写市民卡账号 Token，不能填写 `getOffLineCode` 的人才 Token。
+4. 保留 `ACCESS_KEY`、`COUPON_ID`、`USER_COUPON_ID`，重新部署，再从原快捷指令打开 Worker。
+
+同时配置两个 Token 时，`SMK_TOKEN` 优先。转换失败会返回错误，不会退回可能已失效的固定人才 Token。若只想恢复直接模式，删除或清空 `SMK_TOKEN`，再更新 `HZRCK_TOKEN`。
+
+每次交换需要两个额外上游请求，打开速度取决于这两个接口的可达性。此流程根据原项目源码实现，并通过模拟测试；尚未使用你的真实市民卡登录态验证。它不会自动完成登录或续期市民卡登录 Token。
+
 ## 使用
 
 1. 用 iPhone Safari 打开 Worker 地址。
@@ -53,7 +70,7 @@ npx wrangler secret put USER_COUPON_ID
 4. 新建快捷指令，按顺序添加“URL”和“打开 URL”，URL 填 Worker 地址。
 5. 测试成功后添加到主屏幕。
 
-记住访问码依赖该浏览器对此域名的本地存储。更换域名、浏览器、无痕模式或清除网站数据后，可能需要重新输入。Token 过期后，更新 `HZRCK_TOKEN`。重新领取券后，检查两个券 ID 是否变化。
+记住访问码依赖该浏览器对此域名的本地存储。更换域名、浏览器、无痕模式或清除网站数据后，可能需要重新输入。仅配置 `HZRCK_TOKEN` 时，Token 过期后需要更新它。配置 `SMK_TOKEN` 时，每次打开会重新换取人才 Token；市民卡登录 Token 自身失效时仍需要更新。重新领取券后，检查两个券 ID 是否变化。
 
 ## 完整教程
 
@@ -80,7 +97,7 @@ npx wrangler secret put USER_COUPON_ID
 node --test test.mjs
 ```
 
-8 项本地测试覆盖鉴权、直接模式、可选转换模式、券 ID 处理、错误脱敏和路由限制。直接模式已在一次真实 iPhone Safari 操作中确认能够打开官方页面。Token 长期有效性及实际闸机接受情况需要各自验证。
+10 项本地测试覆盖鉴权、直接模式、可选转换模式、券 ID 处理、错误脱敏和路由限制。直接模式已在一次真实 iPhone Safari 操作中确认能够打开官方页面。Token 长期有效性及实际闸机接受情况需要各自验证。
 
 ## 参考
 
